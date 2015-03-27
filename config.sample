@@ -1,0 +1,8 @@
+WSF.apiaccesscode=
+WSF.gtfsPath=
+WSF.agencyId=WSF
+refreshInterval.vessels=30
+
+tripUpdates.url=http://localhost:9000/tripUpdates
+vehiclePositions.url=http://localhost:9000/vehiclePositions
+alerts.url=http://localhost:9000/alerts

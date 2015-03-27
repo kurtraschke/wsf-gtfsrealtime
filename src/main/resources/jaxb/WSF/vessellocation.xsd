@@ -1,0 +1,63 @@
+<xs:schema xmlns:tns="http://www.wsdot.wa.gov/ferries/vessels/" elementFormDefault="qualified" targetNamespace="http://www.wsdot.wa.gov/ferries/vessels/" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <xs:import namespace="http://schemas.microsoft.com/2003/10/Serialization/" schemaLocation="serialization.xsd" />
+    <xs:complexType name="ArrayOfVesselLocationResponse">
+        <xs:sequence>
+            <xs:element minOccurs="0" maxOccurs="unbounded" name="VesselLocationResponse" nillable="true" type="tns:VesselLocationResponse" />
+        </xs:sequence>
+    </xs:complexType>
+    <xs:element name="ArrayOfVesselLocationResponse" nillable="true" type="tns:ArrayOfVesselLocationResponse" />
+    <xs:complexType name="VesselLocationResponse">
+        <xs:sequence>
+            <xs:element minOccurs="0" name="VesselID" type="xs:int" />
+            <xs:element minOccurs="0" name="VesselName" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="Mmsi" nillable="true" type="xs:int" />
+            <xs:element minOccurs="0" name="DepartingTerminalID" type="xs:int" />
+            <xs:element minOccurs="0" name="DepartingTerminalName" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="DepartingTerminalAbbrev" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="ArrivingTerminalID" nillable="true" type="xs:int" />
+            <xs:element minOccurs="0" name="ArrivingTerminalName" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="ArrivingTerminalAbbrev" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="Latitude" type="xs:double" />
+            <xs:element minOccurs="0" name="Longitude" type="xs:double" />
+            <xs:element minOccurs="0" name="Speed" type="xs:double" />
+            <xs:element minOccurs="0" name="Heading" type="xs:int" />
+            <xs:element minOccurs="0" name="InService" type="xs:boolean" />
+            <xs:element minOccurs="0" name="AtDock" type="xs:boolean" />
+            <xs:element minOccurs="0" name="LeftDock" nillable="true" type="xs:dateTime" />
+            <xs:element minOccurs="0" name="Eta" nillable="true" type="xs:dateTime" />
+            <xs:element minOccurs="0" name="EtaBasis" nillable="true" type="xs:string" />
+            <xs:element minOccurs="0" name="ScheduledDeparture" nillable="true" type="xs:dateTime" />
+            <xs:element minOccurs="0" name="OpRouteAbbrev" nillable="true" type="tns:ArrayOfString" />
+            <xs:element minOccurs="0" name="VesselPositionNum" nillable="true" type="xs:int" />
+            <xs:element minOccurs="0" name="SortSeq" type="xs:int" />
+            <xs:element minOccurs="0" name="ManagedBy" type="tns:VesselManagement" />
+            <xs:element minOccurs="0" name="TimeStamp" type="xs:dateTime" />
+        </xs:sequence>
+    </xs:complexType>
+    <xs:element name="VesselLocationResponse" nillable="true" type="tns:VesselLocationResponse" />
+    <xs:complexType name="ArrayOfString">
+        <xs:sequence>
+            <xs:element minOccurs="0" maxOccurs="unbounded" name="string" nillable="true" type="xs:string" />
+        </xs:sequence>
+    </xs:complexType>
+    <xs:element name="ArrayOfString" nillable="true" type="tns:ArrayOfString" />
+    <xs:simpleType name="VesselManagement">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="WSF">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <EnumerationValue xmlns="http://schemas.microsoft.com/2003/10/Serialization/">1</EnumerationValue>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:enumeration>
+            <xs:enumeration value="KCM">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <EnumerationValue xmlns="http://schemas.microsoft.com/2003/10/Serialization/">2</EnumerationValue>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:element name="VesselManagement" nillable="true" type="tns:VesselManagement" />
+</xs:schema>
