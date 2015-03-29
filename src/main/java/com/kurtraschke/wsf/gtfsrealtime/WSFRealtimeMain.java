@@ -16,8 +16,6 @@
  */
 package com.kurtraschke.wsf.gtfsrealtime;
 
-import org.onebusaway.cli.CommandLineInterfaceLibrary;
-import org.onebusaway.cli.Daemonizer;
 import org.onebusaway.gtfs_realtime.exporter.GtfsRealtimeExporter;
 import org.onebusaway.gtfs_realtime.exporter.GtfsRealtimeFileWriter;
 import org.onebusaway.gtfs_realtime.exporter.GtfsRealtimeGuiceBindingTypes.Alerts;
@@ -35,11 +33,6 @@ import com.google.inject.Module;
 import com.google.inject.ProvisionException;
 import com.google.inject.name.Names;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.GnuParser;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.Parser;
 import org.nnsoft.guice.rocoto.Rocoto;
 import org.nnsoft.guice.rocoto.configuration.ConfigurationModule;
 import org.nnsoft.guice.rocoto.converters.FileConverter;
@@ -52,139 +45,93 @@ import java.io.File;
 import java.net.URL;
 import java.util.HashSet;
 import java.util.Set;
+
 import javax.inject.Inject;
+
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
+import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import net.sourceforge.argparse4j.inf.Namespace;
 
 public class WSFRealtimeMain {
 
   private static final Logger _log = LoggerFactory.getLogger(WSFRealtimeMain.class);
 
-  private final String ARG_CONFIG_FILE = "config";
-  private File _tripUpdatesPath;
-  private URL _tripUpdatesUrl;
-  private File _vehiclePositionsPath;
-  private URL _vehiclePositionsUrl;
-  private File _alertsPath;
-  private URL _alertsUrl;
+  private static final String ARG_CONFIG_FILE = "config";
 
+  @Inject
   @SuppressWarnings("unused")
   private WSFRealtimeProvider _provider;
+
+  @Inject
   private LifecycleService _lifecycleService;
+
   private Injector _injector;
 
+  @Inject
+  @VehiclePositions
   private GtfsRealtimeExporter _vehiclePositionsExporter;
+  @Inject
+  @TripUpdates
   private GtfsRealtimeExporter _tripUpdatesExporter;
+  @Inject
+  @Alerts
   private GtfsRealtimeExporter _alertsExporter;
 
-  public static void main(String[] args) throws Exception {
+  public static void main(String... args) {
     WSFRealtimeMain m = new WSFRealtimeMain();
+
+    ArgumentParser parser = ArgumentParsers.newArgumentParser("wsf-gtfsrealtime");
+    parser.description("Produces a GTFS-realtime feed from the Washington State Ferries API");
+    parser.addArgument("--" + ARG_CONFIG_FILE).type(File.class).help("configuration file path");
+    Namespace parsedArgs;
+
     try {
-      m.run(args);
+      parsedArgs = parser.parseArgs(args);
+      File configFile = parsedArgs.get(ARG_CONFIG_FILE);
+      m.run(configFile);
+
     } catch (CreationException | ConfigurationException | ProvisionException e) {
       _log.error("Error in startup:", e);
       System.exit(-1);
+    } catch (ArgumentParserException ex) {
+      parser.handleError(ex);
     }
   }
 
-  @Inject
-  public void setProvider(WSFRealtimeProvider provider) {
-    _provider = provider;
-  }
-
-  @Inject
-  public void setLifecycleService(LifecycleService lifecycleService) {
-    _lifecycleService = lifecycleService;
-  }
-
-  @Inject
-  public void setVehiclePositionsExporter(@VehiclePositions GtfsRealtimeExporter exporter) {
-    _vehiclePositionsExporter = exporter;
-  }
-
-  @Inject
-  public void setTripUpdatesExporter(@TripUpdates GtfsRealtimeExporter exporter) {
-    _tripUpdatesExporter = exporter;
-  }
-
-  @Inject
-  public void setAlertsExporter(@Alerts GtfsRealtimeExporter exporter) {
-    _alertsExporter = exporter;
-  }
-
-  public void run(String[] args) throws Exception {
-    if (args.length == 0 || CommandLineInterfaceLibrary.wantsHelp(args)) {
-      printUsage();
-      System.exit(-1);
-    }
-
-    Options options = new Options();
-    buildOptions(options);
-    Daemonizer.buildOptions(options);
-    Parser parser = new GnuParser();
-    final CommandLine cli = parser.parse(options, args);
-    Daemonizer.handleDaemonization(cli);
-
+  public void run(File configFile) {
     Set<Module> modules = new HashSet<>();
     WSFRealtimeModule.addModuleAndDependencies(modules);
 
-    _injector = Guice.createInjector(new URLConverter(), new FileConverter(),
-            new PropertiesConverter(), new ConfigurationModule() {
+    _injector = Guice.createInjector(new URLConverter(),
+            new FileConverter(),
+            new PropertiesConverter(),
+            new ConfigurationModule() {
               @Override
               protected void bindConfigurations() {
                 bindEnvironmentVariables();
                 bindSystemProperties();
 
-                if (cli.hasOption(ARG_CONFIG_FILE)) {
-                  bindProperties(new File(cli.getOptionValue(ARG_CONFIG_FILE)));
+                if (configFile != null) {
+                  bindProperties(configFile);
                 }
               }
-            }, Rocoto.expandVariables(modules));
+            },
+            Rocoto.expandVariables(modules));
 
     _injector.injectMembers(this);
 
-    _tripUpdatesUrl = getConfigurationValue(URL.class, "tripUpdates.url");
-    if (_tripUpdatesUrl != null) {
-      GtfsRealtimeServlet servlet = _injector.getInstance(GtfsRealtimeServlet.class);
-      servlet.setUrl(_tripUpdatesUrl);
-      servlet.setSource(_tripUpdatesExporter);
+    configureExporter(getConfigurationValue(URL.class, "tripUpdates.url"),
+            getConfigurationValue(File.class, "tripUpdates.path"),
+            _tripUpdatesExporter);
 
-    }
+    configureExporter(getConfigurationValue(URL.class, "vehiclePositions.url"),
+            getConfigurationValue(File.class, "vehiclePositions.path"),
+            _vehiclePositionsExporter);
 
-    _tripUpdatesPath = getConfigurationValue(File.class, "tripUpdates.path");
-    if (_tripUpdatesPath != null) {
-      GtfsRealtimeFileWriter writer = _injector.getInstance(GtfsRealtimeFileWriter.class);
-      writer.setPath(_tripUpdatesPath);
-      writer.setSource(_tripUpdatesExporter);
-    }
-
-    _vehiclePositionsUrl = getConfigurationValue(URL.class,
-            "vehiclePositions.url");
-    if (_vehiclePositionsUrl != null) {
-      GtfsRealtimeServlet servlet = _injector.getInstance(GtfsRealtimeServlet.class);
-      servlet.setUrl(_vehiclePositionsUrl);
-      servlet.setSource(_vehiclePositionsExporter);
-    }
-
-    _vehiclePositionsPath = getConfigurationValue(File.class,
-            "vehiclePositions.path");
-    if (_vehiclePositionsPath != null) {
-      GtfsRealtimeFileWriter writer = _injector.getInstance(GtfsRealtimeFileWriter.class);
-      writer.setPath(_vehiclePositionsPath);
-      writer.setSource(_vehiclePositionsExporter);
-    }
-
-    _alertsUrl = getConfigurationValue(URL.class, "alerts.url");
-    if (_alertsUrl != null) {
-      GtfsRealtimeServlet servlet = _injector.getInstance(GtfsRealtimeServlet.class);
-      servlet.setUrl(_alertsUrl);
-      servlet.setSource(_alertsExporter);
-    }
-
-    _alertsPath = getConfigurationValue(File.class, "alerts.path");
-    if (_alertsPath != null) {
-      GtfsRealtimeFileWriter writer = _injector.getInstance(GtfsRealtimeFileWriter.class);
-      writer.setPath(_alertsPath);
-      writer.setSource(_alertsExporter);
-    }
+    configureExporter(getConfigurationValue(URL.class, "alerts.url"),
+            getConfigurationValue(File.class, "alerts.path"),
+            _alertsExporter);
 
     _lifecycleService.start();
   }
@@ -197,14 +144,17 @@ public class WSFRealtimeMain {
     }
   }
 
-  private void printUsage() {
-    CommandLineInterfaceLibrary.printUsage(getClass());
-  }
+  private void configureExporter(URL feedUrl, File feedPath, GtfsRealtimeExporter exporter) {
+    if (feedUrl != null) {
+      GtfsRealtimeServlet servlet = _injector.getInstance(GtfsRealtimeServlet.class);
+      servlet.setUrl(feedUrl);
+      servlet.setSource(exporter);
+    }
 
-  private void buildOptions(Options options) {
-    Option configFile = new Option(ARG_CONFIG_FILE, true,
-            "configuration file path");
-    configFile.setRequired(true);
-    options.addOption(configFile);
+    if (feedPath != null) {
+      GtfsRealtimeFileWriter writer = _injector.getInstance(GtfsRealtimeFileWriter.class);
+      writer.setPath(feedPath);
+      writer.setSource(exporter);
+    }
   }
 }

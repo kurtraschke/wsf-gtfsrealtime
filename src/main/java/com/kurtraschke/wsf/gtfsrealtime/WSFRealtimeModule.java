@@ -46,15 +46,21 @@ public class WSFRealtimeModule extends AbstractModule {
 
   @Override
   protected void configure() {
-    bind(HttpClientConnectionManager.class).toInstance(new PoolingHttpClientConnectionManager());
-    bind(ScheduledExecutorService.class).toInstance(Executors.newSingleThreadScheduledExecutor());
+    bind(HttpClientConnectionManager.class)
+            .toInstance(new PoolingHttpClientConnectionManager());
+    bind(ScheduledExecutorService.class)
+            .toInstance(Executors.newSingleThreadScheduledExecutor());
 
-    bind(CalendarServiceData.class).toProvider(
-            CalendarServiceDataProvider.class).in(Scopes.SINGLETON);
-    bind(GtfsRelationalDao.class).toProvider(GtfsRelationalDaoProvider.class).in(
-            Scopes.SINGLETON);
-    bind(TimeZone.class).annotatedWith(AgencyTimeZone.class).toProvider(
-            AgencyTimeZoneProvider.class).in(Scopes.SINGLETON);
+    bind(CalendarServiceData.class)
+            .toProvider(CalendarServiceDataProvider.class)
+            .in(Scopes.SINGLETON);
+    bind(GtfsRelationalDao.class)
+            .toProvider(GtfsRelationalDaoProvider.class)
+            .in(Scopes.SINGLETON);
+    bind(TimeZone.class)
+            .annotatedWith(AgencyTimeZone.class)
+            .toProvider(AgencyTimeZoneProvider.class)
+            .in(Scopes.SINGLETON);
   }
 
   /**

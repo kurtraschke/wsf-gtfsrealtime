@@ -89,6 +89,10 @@ public class WSFRealtimeProvider {
   @Inject
   private TripResolutionService _tripResolutionService;
 
+  private static final float KNOT_TO_KM_H = 1.852f;
+
+  private static final float KM_H_TO_M_S = 1000f/3600f;
+
   @PostConstruct
   public void start() {
     _log.info("Starting GTFS-realtime service");
@@ -154,12 +158,12 @@ public class WSFRealtimeProvider {
     private TripDescriptor buildTripDescriptor(VesselLocationResponse vlr) {
       TripDescriptor.Builder tripDescriptor = TripDescriptor.newBuilder();
 
-      ActivatedTrip resolvedTrip = _tripResolutionService.resolve(vlr.getDepartingTerminalID().toString(),
+      ActivatedTrip activatedTrip = _tripResolutionService.resolve(vlr.getDepartingTerminalID().toString(),
               ts(vlr.getScheduledDeparture().getValue()),
               vlr.getArrivingTerminalID().getValue().toString());
 
-      Trip trip = resolvedTrip.getTrip();
-      ServiceDate sd = resolvedTrip.getServiceDate();
+      Trip trip = activatedTrip.getTrip();
+      ServiceDate sd = activatedTrip.getServiceDate();
 
       tripDescriptor.setTripId(trip.getId().getId());
       tripDescriptor.setRouteId(trip.getRoute().getId().getId());
@@ -174,7 +178,7 @@ public class WSFRealtimeProvider {
       position.setLatitude(vlr.getLatitude().floatValue());
       position.setLongitude(vlr.getLongitude().floatValue());
       position.setBearing(vlr.getHeading());
-      position.setSpeed((float) (vlr.getSpeed().floatValue() * 0.514));
+      position.setSpeed(vlr.getSpeed().floatValue() * KNOT_TO_KM_H * KM_H_TO_M_S);
 
       return position.build();
     }

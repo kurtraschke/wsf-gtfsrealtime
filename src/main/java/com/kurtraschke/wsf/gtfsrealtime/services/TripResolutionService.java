@@ -15,6 +15,7 @@
  */
 package com.kurtraschke.wsf.gtfsrealtime.services;
 
+import org.onebusaway.gtfs.model.AgencyAndId;
 import org.onebusaway.gtfs.model.calendar.CalendarServiceData;
 import org.onebusaway.gtfs.model.calendar.ServiceDate;
 import org.onebusaway.gtfs.services.GtfsRelationalDao;
@@ -27,10 +28,10 @@ import java.util.Date;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 
 public class TripResolutionService {
 
@@ -44,16 +45,20 @@ public class TripResolutionService {
   @AgencyTimeZone
   private TimeZone _agencyTimeZone;
 
+  @Inject
+  @Named("WSF.agencyId")
+  private String _agencyId;
+
   private int maxStopTime() {
     return _dao.getAllStopTimes().stream()
-            .flatMapToInt(
+            .flatMap(
                     st -> {
-                      return IntStream.concat(
-                              st.isArrivalTimeSet() ? IntStream.of(st.getArrivalTime()) : IntStream.empty(),
-                              st.isDepartureTimeSet() ? IntStream.of(st.getDepartureTime()) : IntStream.empty());
+                      return Stream.concat(
+                              st.isArrivalTimeSet() ? Stream.of(st.getArrivalTime()) : Stream.<Integer>empty(),
+                              st.isDepartureTimeSet() ? Stream.of(st.getDepartureTime()) : Stream.<Integer>empty());
                     }
             )
-            .max().getAsInt();
+            .reduce(Integer::max).get();
   }
 
   public ActivatedTrip resolve(String departingTerminalId, long departureTime, String arrivingTerminalId) {
@@ -61,9 +66,12 @@ public class TripResolutionService {
     int maxStopTime = maxStopTime();
     int lookBackDays = (maxStopTime / 86400) + 1;
 
+    AgencyAndId stopId = new AgencyAndId(_agencyId, departingTerminalId);
+    AgencyAndId routeId = new AgencyAndId(_agencyId, departingTerminalId + arrivingTerminalId);
+
     Set<ActivatedTrip> collect = _dao.getAllStopTimes().stream()
-            .filter(st -> st.getStop().getId().getId().equals(departingTerminalId))
-            .filter(st -> st.getTrip().getRoute().getId().getId().equals(departingTerminalId + arrivingTerminalId))
+            .filter(st -> st.getStop().getId().equals(stopId))
+            .filter(st -> st.getTrip().getRoute().getId().equals(routeId))
             .flatMap(
                     st -> {
                       return Stream.iterate(initialServiceDate, ServiceDate::previous).limit(lookBackDays)

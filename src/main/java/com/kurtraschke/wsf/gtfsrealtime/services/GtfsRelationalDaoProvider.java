@@ -37,7 +37,7 @@ public class GtfsRelationalDaoProvider implements Provider<GtfsRelationalDao> {
   @Inject
   @Named("WSF.gtfsPath")
   private File _gtfsPath;
-  
+
   @Override
   public GtfsRelationalDao get() {
     _log.info("Loading GTFS from {}", _gtfsPath.toString());

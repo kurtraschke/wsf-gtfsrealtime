@@ -27,12 +27,8 @@ import javax.inject.Inject;
 public class CalendarServiceDataProvider implements
         Provider<CalendarServiceData> {
 
-  private GtfsRelationalDao _dao;
-
   @Inject
-  public void setGtfsRelationalDao(GtfsRelationalDao dao) {
-    _dao = dao;
-  }
+  private GtfsRelationalDao _dao;
 
   @Override
   public CalendarServiceData get() {
