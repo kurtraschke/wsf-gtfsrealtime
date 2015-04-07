@@ -15,4 +15,6 @@ Build with `mvn install`.
 
 Run with `java -jar target/wsf-gtfsrealtime-1.0-SNAPSHOT-withAllDependencies.jar --config=config`.
 
-Configuration values can also be set as environment variables or Java properties (such as `-DWSF.agencyId=WSF`); the configuration file can be omitted entirely if all required values are defined elsewhere.
+Configuration values can also be set as Java properties (such as `-DWSF.agencyId=WSF`); the configuration file can be omitted entirely if all required values are defined this way.
+
+You may wish to adjust the logging levels in `logback.xml` to cut down on the volume of logging after initial configuration and testing.

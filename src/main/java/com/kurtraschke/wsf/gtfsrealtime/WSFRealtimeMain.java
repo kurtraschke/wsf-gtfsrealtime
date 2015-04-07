@@ -71,9 +71,11 @@ public class WSFRealtimeMain {
   @Inject
   @VehiclePositions
   private GtfsRealtimeExporter _vehiclePositionsExporter;
+
   @Inject
   @TripUpdates
   private GtfsRealtimeExporter _tripUpdatesExporter;
+
   @Inject
   @Alerts
   private GtfsRealtimeExporter _alertsExporter;
@@ -90,7 +92,6 @@ public class WSFRealtimeMain {
       parsedArgs = parser.parseArgs(args);
       File configFile = parsedArgs.get(ARG_CONFIG_FILE);
       m.run(configFile);
-
     } catch (CreationException | ConfigurationException | ProvisionException e) {
       _log.error("Error in startup:", e);
       System.exit(-1);
@@ -103,13 +104,13 @@ public class WSFRealtimeMain {
     Set<Module> modules = new HashSet<>();
     WSFRealtimeModule.addModuleAndDependencies(modules);
 
-    _injector = Guice.createInjector(new URLConverter(),
+    _injector = Guice.createInjector(
+            new URLConverter(),
             new FileConverter(),
             new PropertiesConverter(),
             new ConfigurationModule() {
               @Override
               protected void bindConfigurations() {
-                bindEnvironmentVariables();
                 bindSystemProperties();
 
                 if (configFile != null) {
@@ -119,7 +120,7 @@ public class WSFRealtimeMain {
             },
             Rocoto.expandVariables(modules));
 
-    _injector.injectMembers(this);
+    _injector.getMembersInjector(WSFRealtimeMain.class).injectMembers(this);
 
     configureExporter(getConfigurationValue(URL.class, "tripUpdates.url"),
             getConfigurationValue(File.class, "tripUpdates.path"),

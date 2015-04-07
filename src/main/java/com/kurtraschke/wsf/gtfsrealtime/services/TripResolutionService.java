@@ -20,20 +20,28 @@ import org.onebusaway.gtfs.model.calendar.CalendarServiceData;
 import org.onebusaway.gtfs.model.calendar.ServiceDate;
 import org.onebusaway.gtfs.services.GtfsRelationalDao;
 
-import com.google.common.collect.Iterables;
+import com.google.common.collect.Iterators;
 import com.kurtraschke.wsf.gtfsrealtime.AgencyTimeZone;
 import com.kurtraschke.wsf.gtfsrealtime.model.ActivatedTrip;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Date;
-import java.util.Set;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.TimeZone;
-import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Singleton;
 
+@Singleton
 public class TripResolutionService {
+
+  private static final Logger _log = LoggerFactory.getLogger(TripResolutionService.class);
 
   @Inject
   private GtfsRelationalDao _dao;
@@ -51,14 +59,22 @@ public class TripResolutionService {
 
   private int maxStopTime() {
     return _dao.getAllStopTimes().stream()
-            .flatMap(
+            .flatMapToInt(
                     st -> {
-                      return Stream.concat(
-                              st.isArrivalTimeSet() ? Stream.of(st.getArrivalTime()) : Stream.<Integer>empty(),
-                              st.isDepartureTimeSet() ? Stream.of(st.getDepartureTime()) : Stream.<Integer>empty());
+                      IntStream.Builder isb = IntStream.builder();
+
+                      if (st.isArrivalTimeSet()) {
+                        isb.accept(st.getArrivalTime());
+                      }
+
+                      if (st.isDepartureTimeSet()) {
+                        isb.accept(st.getDepartureTime());
+                      }
+
+                      return isb.build();
                     }
             )
-            .reduce(Integer::max).get();
+            .max().getAsInt();
   }
 
   public ActivatedTrip resolve(String departingTerminalId, long departureTime, String arrivingTerminalId) {
@@ -69,20 +85,24 @@ public class TripResolutionService {
     AgencyAndId stopId = new AgencyAndId(_agencyId, departingTerminalId);
     AgencyAndId routeId = new AgencyAndId(_agencyId, departingTerminalId + arrivingTerminalId);
 
-    Set<ActivatedTrip> collect = _dao.getAllStopTimes().stream()
+    Iterator<ActivatedTrip> activatedTrips = _dao.getAllStopTimes().stream()
             .filter(st -> st.getStop().getId().equals(stopId))
             .filter(st -> st.getTrip().getRoute().getId().equals(routeId))
             .flatMap(
                     st -> {
                       return Stream.iterate(initialServiceDate, ServiceDate::previous).limit(lookBackDays)
                       .filter(sd -> _csd.getServiceIdsForDate(sd).contains(st.getTrip().getServiceId()))
-                      .filter(sd -> st.getDepartureTime() == (int) (departureTime - (sd.getAsCalendar(_agencyTimeZone).getTimeInMillis() / 1000)))
+                      .filter(sd -> st.getDepartureTime() == (departureTime - (sd.getAsCalendar(_agencyTimeZone).getTimeInMillis() / 1000)))
                       .map(sd -> new ActivatedTrip(st.getTrip(), sd));
                     }
             )
-            .collect(Collectors.toSet());
+            .iterator();
 
-    return Iterables.getOnlyElement(collect);
+    try {
+      return Iterators.getOnlyElement(activatedTrips);
+    } catch (NoSuchElementException | IllegalArgumentException ex) {
+      _log.warn("Failed to resolve trip:", ex);
+      return null;
+    }
   }
-
 }

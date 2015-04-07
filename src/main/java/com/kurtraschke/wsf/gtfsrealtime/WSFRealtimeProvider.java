@@ -35,17 +35,15 @@ import com.kurtraschke.wsf.gtfsrealtime.model.ActivatedTrip;
 import com.kurtraschke.wsf.gtfsrealtime.services.TripResolutionService;
 import com.kurtraschke.wsf.gtfsrealtime.services.WSFVesselLocationService;
 
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.util.Collection;
 import java.util.GregorianCalendar;
-import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -58,7 +56,7 @@ import gov.wa.wsdot.ferries.vessels.VesselLocationResponse;
 
 public class WSFRealtimeProvider {
 
-  private static final org.slf4j.Logger _log = LoggerFactory.getLogger(WSFRealtimeProvider.class);
+  private static final Logger _log = LoggerFactory.getLogger(WSFRealtimeProvider.class);
 
   @Inject
   private ScheduledExecutorService _executor;
@@ -91,7 +89,7 @@ public class WSFRealtimeProvider {
 
   private static final float KNOT_TO_KM_H = 1.852f;
 
-  private static final float KM_H_TO_M_S = 1000f/3600f;
+  private static final float KM_H_TO_M_S = 1000f / 3600f;
 
   @PostConstruct
   public void start() {
@@ -111,33 +109,46 @@ public class WSFRealtimeProvider {
     public void run() {
       _log.info("Refreshing vessels...");
       try {
-        Collection<VesselLocationResponse> allVessels = _vesselLocationService.getAllVessels();
-
-        Map<Integer, TripDescriptor> tripDescriptorsByVessel = allVessels.stream()
-                .filter(vlr -> vlr.isInService())
-                .filter(vlr -> !vlr.getArrivingTerminalID().isNil())
-                .filter(vlr -> !vlr.getScheduledDeparture().isNil())
-                .collect(Collectors.toMap(vlr -> vlr.getVesselID(), vlr -> buildTripDescriptor(vlr)));
+        Iterable<VesselLocationResponse> allVessels = _vesselLocationService.getAllVessels();
 
         GtfsRealtimeFullUpdate vehiclePositionsUpdate = new GtfsRealtimeFullUpdate();
-
-        allVessels.stream()
-                .map(vlr -> buildVehiclePosition(vlr, tripDescriptorsByVessel))
-                .map(vp -> wrapVehiclePosition(vp))
-                .forEach(vehiclePositionsUpdate::addEntity);
-
-        _vehiclePositionsSink.handleFullUpdate(vehiclePositionsUpdate);
-
         GtfsRealtimeFullUpdate tripUpdatesUpdate = new GtfsRealtimeFullUpdate();
 
-        allVessels.stream()
-                .filter(vlr -> vlr.isInService())
-                .filter(vlr -> !vlr.getArrivingTerminalID().isNil())
-                .filter(vlr -> !vlr.getScheduledDeparture().isNil())
-                .map(vlr -> buildTripUpdate(vlr, tripDescriptorsByVessel))
-                .map(tu -> wrapTripUpdate(tu))
-                .forEach(tripUpdatesUpdate::addEntity);
+        for (VesselLocationResponse vlr : allVessels) {
+          if (!vlr.isInService()) {
+            _log.debug("Discarding update for vessel {} because vessel is not in service.", vlr.getVesselID());
+            continue;
+          }
 
+          if (vlr.getArrivingTerminalID().isNil() || vlr.getScheduledDeparture().isNil()) {
+            _log.debug("Discarding update for vessel {} because arriving terminal or scheduled departure are undefined.", vlr.getVesselID());
+            continue;
+          }
+
+          try {
+            VehicleDescriptor vd = buildVehicleDescriptor(vlr);
+            TripDescriptor td = buildTripDescriptor(vlr);
+
+            if (td == null) {
+              _log.debug("Discarding update for vessel {} because trip could not be mapped.", vlr.getVesselID());
+              continue;
+            }
+
+            FeedEntity vehiclePositionFeedEntity = wrapVehiclePosition(buildVehiclePosition(vlr, vd, td));
+            vehiclePositionsUpdate.addEntity(vehiclePositionFeedEntity);
+
+            FeedEntity tripUpdateFeedEntity = wrapTripUpdate(buildTripUpdate(vlr, vd, td));
+            if (tripUpdateFeedEntity.getTripUpdate().getStopTimeUpdateCount() > 0) {
+              tripUpdatesUpdate.addEntity(tripUpdateFeedEntity);
+            } else {
+              _log.debug("Discarding update for vessel {} because no StopTimeUpdates were produced.", vlr.getVesselID());
+            }
+          } catch (Exception ex) {
+            _log.warn(String.format("Error updating vessel %d:", vlr.getVesselID()), ex);
+          }
+        }
+
+        _vehiclePositionsSink.handleFullUpdate(vehiclePositionsUpdate);
         _tripUpdatesSink.handleFullUpdate(tripUpdatesUpdate);
 
       } catch (URISyntaxException | IOException | JAXBException ex) {
@@ -162,6 +173,10 @@ public class WSFRealtimeProvider {
               ts(vlr.getScheduledDeparture().getValue()),
               vlr.getArrivingTerminalID().getValue().toString());
 
+      if (activatedTrip == null) {
+        return null;
+      }
+
       Trip trip = activatedTrip.getTrip();
       ServiceDate sd = activatedTrip.getServiceDate();
 
@@ -183,14 +198,12 @@ public class WSFRealtimeProvider {
       return position.build();
     }
 
-    private VehiclePosition buildVehiclePosition(VesselLocationResponse vlr, Map<Integer, TripDescriptor> tripDescriptorsByVessel) {
+    private VehiclePosition buildVehiclePosition(VesselLocationResponse vlr,
+            VehicleDescriptor vd, TripDescriptor td) {
       VehiclePosition.Builder vehiclePosition = VehiclePosition.newBuilder();
-      vehiclePosition.setVehicle(buildVehicleDescriptor(vlr));
+      vehiclePosition.setVehicle(vd);
+      vehiclePosition.setTrip(td);
       vehiclePosition.setPosition(buildPosition(vlr));
-
-      if (tripDescriptorsByVessel.containsKey(vlr.getVesselID())) {
-        vehiclePosition.setTrip(tripDescriptorsByVessel.get(vlr.getVesselID()));
-      }
 
       vehiclePosition.setTimestamp(ts(vlr.getTimeStamp()));
 
@@ -204,13 +217,12 @@ public class WSFRealtimeProvider {
       return feb.build();
     }
 
-    private TripUpdate buildTripUpdate(VesselLocationResponse vlr, Map<Integer, TripDescriptor> tripDescriptorsByVessel) {
+    private TripUpdate buildTripUpdate(VesselLocationResponse vlr,
+            VehicleDescriptor vd, TripDescriptor td) {
       TripUpdate.Builder tripUpdate = TripUpdate.newBuilder();
-      tripUpdate.setVehicle(buildVehicleDescriptor(vlr));
+      tripUpdate.setVehicle(vd);
 
-      if (tripDescriptorsByVessel.containsKey(vlr.getVesselID())) {
-        tripUpdate.setTrip(tripDescriptorsByVessel.get(vlr.getVesselID()));
-      }
+      tripUpdate.setTrip(td);
 
       if (!vlr.getLeftDock().isNil()) {
         StopTimeUpdate.Builder stopTimeUpdate = tripUpdate.addStopTimeUpdateBuilder();
@@ -245,8 +257,7 @@ public class WSFRealtimeProvider {
 
     private long ts(XMLGregorianCalendar xgc) {
       GregorianCalendar gc = xgc.toGregorianCalendar(_agencyTimeZone, null, null);
-      return (gc.getTimeInMillis() / 1000);
+      return (gc.getTimeInMillis() / 1000L);
     }
   }
-
 }
